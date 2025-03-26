@@ -1,27 +1,47 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"sync/atomic"
+
+	"github.com/joho/godotenv"
+	_ "github.com/lib/pq"
+	"github.com/tylerbartlett24/chirpy/internal/database"
 )
 
 func main() {
 	const rootFilePath = "."
 	const port = ":8080"
+	
+	godotenv.Load()
+	dbURL := os.Getenv("DB_URL")
+	platform := os.Getenv("PLATFORM")
+	db, err := sql.Open("postgres", dbURL)
+	if err != nil {
+		log.Fatalf("Could not open database: %v", err)
+	}
+	dbQueries := database.New(db)
 
 	rootHandler := http.StripPrefix("/app", http.FileServer(http.Dir(rootFilePath)))
 	serveMux := http.NewServeMux()
 	apiCfg := apiConfig{
 		fileserverHits: atomic.Int32{},
+		Queries: dbQueries,
+		Platform: platform,
 	}
 
 	serveMux.Handle("/app/", apiCfg.middlewareMetricsInc(rootHandler))
 	serveMux.HandleFunc("GET /api/healthz", readyHandler)
 	serveMux.HandleFunc("GET /admin/metrics", apiCfg.metricsHandler)
 	serveMux.HandleFunc("POST /admin/reset", apiCfg.resetHandler)
-	serveMux.HandleFunc("POST /api/validate_chirp", validateHandler)
+	serveMux.HandleFunc("POST /api/chirps", apiCfg.createChirpsHandler)
+	serveMux.HandleFunc("POST /api/users", apiCfg.usersHandler)
+	serveMux.HandleFunc("GET /api/chirps", apiCfg.readChirpsHandler)
+	serveMux.HandleFunc("GET /api/chirps/{chirpID}", apiCfg.readChirpHandler)
 	
 	server := &http.Server{
 		Handler: serveMux,

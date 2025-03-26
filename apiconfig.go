@@ -2,12 +2,17 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"sync/atomic"
+
+	"github.com/tylerbartlett24/chirpy/internal/database"
 )
 
 type apiConfig struct {
 	fileserverHits atomic.Int32
+	Queries *database.Queries
+	Platform string
 }
 
 const metricsHTML = `<html>
@@ -33,7 +38,17 @@ func (cfg *apiConfig) metricsHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (cfg *apiConfig) resetHandler(w http.ResponseWriter, r *http.Request) {
+	if cfg.Platform != "dev" {
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
 	cfg.fileserverHits.Store(0)
+	err := cfg.Queries.Reset(r.Context())
+	if err != nil {
+		log.Printf("Could not reset database: %v", err)
+		w.WriteHeader(400)
+		return
+	}
 	w.WriteHeader(http.StatusOK)
 }
 
