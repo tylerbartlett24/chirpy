@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/tylerbartlett24/chirpy/internal/auth"
 	"github.com/tylerbartlett24/chirpy/internal/database"
 )
 
@@ -23,7 +24,6 @@ type Chirp struct {
 func (cfg *apiConfig) createChirpsHandler(w http.ResponseWriter, r *http.Request) {
 	type parameters struct{
 		Body string `json:"body"`
-		UserID uuid.UUID `json:"user_id"`
 	}
 	
 	const maxChirpLength = 140
@@ -37,6 +37,19 @@ func (cfg *apiConfig) createChirpsHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, 
+			"No token provided.", err)
+		return
+	}
+	userID, err := auth.ValidateJWT(token, cfg.Secret)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, 
+			"Could not validate token.", err)
+		return
+	}
+
 	if len(params.Body) > maxChirpLength {
 		err = errors.New("chirp too long")
 		respondWithError(w, http.StatusBadRequest, err.Error(), err)
@@ -46,7 +59,7 @@ func (cfg *apiConfig) createChirpsHandler(w http.ResponseWriter, r *http.Request
 	
 	chirpParams := database.CreateChirpParams{
 		Body: params.Body,
-		UserID: params.UserID,
+		UserID: userID,
 	}
 	fmt.Println(chirpParams.Body)
 	fmt.Println(chirpParams.UserID)
@@ -61,7 +74,7 @@ func (cfg *apiConfig) createChirpsHandler(w http.ResponseWriter, r *http.Request
 		CreatedAt: newChirp.CreatedAt,
 		UpdatedAt: newChirp.UpdatedAt,
 		Body: params.Body,
-		UserID: params.UserID,
+		UserID: userID,
 	}
 	respondWithJSON(w, http.StatusCreated, respBody)
 }

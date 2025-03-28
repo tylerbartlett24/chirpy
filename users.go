@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -16,6 +15,7 @@ type User struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 	Email string `json:"email"`
+	Token string `json:"token"`
 }
 
 
@@ -53,7 +53,8 @@ func (cfg *apiConfig) createUsersHandler(w http.ResponseWriter, r *http.Request)
 	}
 	user, err := cfg.Queries.CreateUser(r.Context(), dbParams)
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Couldn't create user", err)
+		respondWithError(w, http.StatusInternalServerError, 
+			"Couldn't create user", err)
 		return
 	}
 	
@@ -70,6 +71,7 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
 		Email string `json:"email"`
 		Password string `json:"password"`
+		Expires int `json:"expires_in_seconds"`
 	}
 	
 	decoder := json.NewDecoder(r.Body)
@@ -81,16 +83,28 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Println(params.Email)
-	user, err := cfg.Queries.GetUser(r.Context(), params.Email)
+	// 1 hour is default and maximum expiration time
+	if params.Expires == 0 || params.Expires > 3600 {
+		params.Expires = 3600
+	}
+	user, err := cfg.Queries.GetUserByEmail(r.Context(), params.Email)
 	if err != nil {
-		respondWithError(w, http.StatusForbidden, "Incorrect email.", err)
+		respondWithError(w, http.StatusUnauthorized, "Incorrect email.", err)
 		return
 	}
 
 	err = auth.CheckPasswordHash(user.HashedPassword, params.Password)
 	if err != nil {
-		respondWithError(w, http.StatusUnauthorized, "Incorrect password.", err)
+		respondWithError(w, http.StatusUnauthorized, "Incorrect password.",
+		 err)
+		return
+	}
+
+	token, err := auth.MakeJWT(user.ID, cfg.Secret, 
+		(time.Duration(params.Expires) * time.Second))
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, 
+			"Failed to generate token.", err)
 		return
 	}
 
@@ -99,6 +113,7 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
 		CreatedAt: user.CreatedAt,
 		UpdatedAt: user.UpdatedAt,
 		Email: user.Email,
+		Token: token,
 	}
 	respondWithJSON(w, http.StatusOK, respBody)
 }

@@ -20,6 +20,7 @@ func main() {
 	godotenv.Load()
 	dbURL := os.Getenv("DB_URL")
 	platform := os.Getenv("PLATFORM")
+	secret := os.Getenv("SECRET")
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
 		log.Fatalf("Could not open database: %v", err)
@@ -32,6 +33,7 @@ func main() {
 		fileserverHits: atomic.Int32{},
 		Queries: dbQueries,
 		Platform: platform,
+		Secret: secret,
 	}
 
 	serveMux.Handle("/app/", apiCfg.middlewareMetricsInc(rootHandler))
