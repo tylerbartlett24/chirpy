@@ -15,7 +15,6 @@ type User struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 	Email string `json:"email"`
-	Token string `json:"token"`
 }
 
 
@@ -71,7 +70,11 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
 		Email string `json:"email"`
 		Password string `json:"password"`
-		Expires int `json:"expires_in_seconds"`
+	}
+	type response struct {
+		User
+		Token string `json:"token"`
+		RefreshToken string `json:"refresh_token"`
 	}
 	
 	decoder := json.NewDecoder(r.Body)
@@ -83,10 +86,6 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 1 hour is default and maximum expiration time
-	if params.Expires == 0 || params.Expires > 3600 {
-		params.Expires = 3600
-	}
 	user, err := cfg.Queries.GetUserByEmail(r.Context(), params.Email)
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, "Incorrect email.", err)
@@ -101,19 +100,35 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	token, err := auth.MakeJWT(user.ID, cfg.Secret, 
-		(time.Duration(params.Expires) * time.Second))
+		(3600 * time.Second))
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, 
 			"Failed to generate token.", err)
 		return
 	}
 
-	respBody := User{
+	refreshToken, _ := auth.MakeRefreshToken()
+	refTokParams := database.CreateRefreshTokenParams{
+		Token: refreshToken,
+		UserID: user.ID,
+	}
+	_, err = cfg.Queries.CreateRefreshToken(r.Context(), refTokParams)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, 
+			"Could not save refresh token to database.", err)
+		return
+	}
+
+	respUser := User{
 		ID: user.ID,
 		CreatedAt: user.CreatedAt,
 		UpdatedAt: user.UpdatedAt,
 		Email: user.Email,
+	}
+	respBody := response{
+		User: respUser,
 		Token: token,
+		RefreshToken: refreshToken,
 	}
 	respondWithJSON(w, http.StatusOK, respBody)
 }

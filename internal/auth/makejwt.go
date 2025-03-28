@@ -8,7 +8,7 @@ import (
 )
 
 func MakeJWT(userID uuid.UUID, tokenSecret string, expiresIn time.Duration) (string, error) {
-	currentDate := jwt.NewNumericDate(time.Now())
+	currentDate := jwt.NewNumericDate(time.Now().UTC())
 	claims := jwt.RegisteredClaims{
 		Issuer: "chirpy",
 		IssuedAt: currentDate,

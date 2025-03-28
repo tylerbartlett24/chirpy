@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -61,8 +60,6 @@ func (cfg *apiConfig) createChirpsHandler(w http.ResponseWriter, r *http.Request
 		Body: params.Body,
 		UserID: userID,
 	}
-	fmt.Println(chirpParams.Body)
-	fmt.Println(chirpParams.UserID)
 	newChirp, err := cfg.Queries.CreateChirp(r.Context(), chirpParams)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't create chirp", err)
