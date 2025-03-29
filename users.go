@@ -132,3 +132,57 @@ func (cfg *apiConfig) loginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	respondWithJSON(w, http.StatusOK, respBody)
 }
+
+func (cfg *apiConfig) updateUsersHandler(w http.ResponseWriter, r *http.Request) {
+	type parameters struct{
+		Email string `json:"email"`
+		Password string `json:"password"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+    params := parameters{}
+    err := decoder.Decode(&params)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, 
+		"Could not decode parameters", err)
+		return
+	}
+
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, 
+			"Malformed request", err)
+		return
+	}
+	userID, err := auth.ValidateJWT(token, cfg.Secret)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, 
+			"Could not validate token.", err)
+		return
+	}
+	hashPasswd, err := auth.HashPassword(params.Password)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, 
+			"Could not hash password.", err)
+		return
+	}
+
+	updateParams := database.UpdateSignInParams{
+		Email: params.Email,
+		HashedPassword: hashPasswd,
+		ID: userID,
+	}
+	user, err := cfg.Queries.UpdateSignIn(r.Context(), updateParams)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, 
+			"Could not update information.", err)
+		return
+	}
+
+	respondWithJSON(w, http.StatusOK, User{
+		ID: user.ID,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
+		Email: user.Email,
+	})
+}

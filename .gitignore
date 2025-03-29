@@ -27,5 +27,6 @@ go.work.sum
 # HTTP requests for testing
 *.http
 
-# Binary
+# Binaries
 chirpy
+out

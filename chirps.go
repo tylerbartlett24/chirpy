@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/json"
 	"errors"
-	"log"
 	"net/http"
 	"time"
 
@@ -31,15 +30,15 @@ func (cfg *apiConfig) createChirpsHandler(w http.ResponseWriter, r *http.Request
     params := parameters{}
     err := decoder.Decode(&params)
 	if err != nil {
-		log.Printf("Error decoding parameters: %s", err)
-		w.WriteHeader(500)
+		respondWithError(w, http.StatusUnauthorized, 
+		"Could not decode parameters", err)
 		return
 	}
 
 	token, err := auth.GetBearerToken(r.Header)
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, 
-			"No token provided.", err)
+			"Malformed request", err)
 		return
 	}
 	userID, err := auth.ValidateJWT(token, cfg.Secret)
@@ -121,4 +120,50 @@ func (cfg *apiConfig) readChirpHandler(w http.ResponseWriter, r *http.Request) {
 		UserID: dbChirp.UserID,
 	}
 	respondWithJSON(w, http.StatusOK, respBody)
+}
+
+func (cfg *apiConfig) deleteChirpsHandler(w http.ResponseWriter, r *http.Request) {
+	stringUUID := r.PathValue("chirpID")
+	chirpID, err := uuid.Parse(stringUUID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError,
+			"Invalid UUID", err)
+	   return
+	}
+
+	token, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, 
+			"Malformed request", err)
+		return
+	}
+	userID, err := auth.ValidateJWT(token, cfg.Secret)
+	if err != nil {
+		respondWithError(w, http.StatusUnauthorized, 
+			"Could not validate token.", err)
+		return
+	}
+
+	dbChirp, err := cfg.Queries.GetChirp(r.Context(), chirpID)
+	if err != nil {
+		respondWithError(w, http.StatusNotFound,
+			"Could not find chirp", err)
+		return
+	}
+
+	if dbChirp.UserID != userID {
+		err = errors.New("user not authorized to delete this chirp")
+		respondWithError(w, http.StatusForbidden,
+			err.Error(), err)
+		return
+	}
+
+	err = cfg.Queries.DeleteChirp(r.Context(), dbChirp.ID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError,
+			"Could not delete chirp", err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
